@@ -590,7 +590,6 @@ RLM_ARRAY_TYPE(PrimaryEmployeeObject);
     [realm commitWriteTransaction];
 }
 
-
 #pragma mark - Default Property Values
 
 - (void)testNoDefaultPropertyValues
