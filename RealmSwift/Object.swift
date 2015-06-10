@@ -308,4 +308,17 @@ public class ObjectUtil: NSObject {
         let list = (object as! Object)[property!.name]! as! RLMListBase
         list._rlmArray = array
     }
+
+    @objc private class func isPropertyBool(name: String?, instance: AnyObject) -> Bool {
+        let reflection = reflect(instance)
+
+        // Skip the first property (super):
+        // super is an implicit property on Swift objects
+        for i in 1..<reflection.count {
+            if (reflection[i].0 == name) {
+                return reflection[i].1.value is Bool
+            }
+        }
+        fatalError()
+    }
 }
