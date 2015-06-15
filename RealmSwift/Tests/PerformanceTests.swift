@@ -134,6 +134,31 @@ class SwiftPerformanceTests: TestCase {
         }
     }
 
+    func testStandaloneObjectInitialization() {
+        let source = [
+            "name" : "Realm",
+            "employees" : [
+                [
+                    "name" : "Samuel",
+                    "age" : 20,
+                    "hired" : true
+                ],
+                [
+                    "name" : "Anna",
+                    "age" : 14,
+                    "hired" : false
+                ]
+            ]
+        ]
+
+        measureBlock {
+            for _ in 0..<2500 {
+                let companyObject = SwiftCompanyObject(value: source)
+                _ = SwiftCompanyObject(value: companyObject)
+            }
+        }
+    }
+
     func testCountWhereQuery() {
         let realm = copyRealmToTestPath(largeRealm)
         measureBlock {
