@@ -41,12 +41,8 @@ namespace realm {
   @public
     // The name of the property which this RLMArray represents
     NSString *_key;
+    __weak RLMObjectBase *_parentObject;
 }
-
-// initializer
-- (instancetype)initWithObjectClassName:(NSString *)objectClassName
-                           parentObject:(RLMObjectBase *)object
-                                    key:(NSString *)key;
 
 // deletes all objects in the RLMArray from their containing realms
 - (void)deleteObjectsFromRealm;
