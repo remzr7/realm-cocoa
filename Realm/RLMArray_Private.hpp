@@ -32,8 +32,9 @@ namespace realm {
     typedef util::bind_ptr<LinkView> LinkViewRef;
 }
 
-@class RLMObjectSchema;
 @class RLMObjectBase;
+@class RLMObjectSchema;
+class RLMObservationInfo;
 
 @interface RLMArray () {
   @protected
@@ -59,6 +60,9 @@ namespace realm {
                                          realm:(RLMRealm *)realm
                                            key:(NSString *)key;
 @end
+
+// Initialize the observation info for an array if needed
+void RLMEnsureArrayObservationInfo(std::unique_ptr<RLMObservationInfo>& info, NSString *keyPath, RLMArray *array, id observed);
 
 
 //
