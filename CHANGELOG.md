@@ -8,6 +8,9 @@ x.xx.x Release notes (yyyy-MM-dd)
 ### Enhancements
 
 * Reduce the amount of memory used by RLMRealm notification listener threads.
+* Entire standlone object graph copies can now be made with
+  `-[RLMObject initWithValue:]` and `Object(value:)` when the value is of the
+  same object type.
 
 ### Bugfixes
 
