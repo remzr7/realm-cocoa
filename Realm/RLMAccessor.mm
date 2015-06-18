@@ -51,7 +51,7 @@ static inline void RLMVerifyAttached(__unsafe_unretained RLMObjectBase *const ob
     if (!obj->_row.is_attached()) {
         @throw RLMException(@"Object has been deleted or invalidated.");
     }
-    RLMCheckThread(obj->_realm);
+    [obj->_realm verifyThread];
 }
 
 // verify writable
@@ -59,7 +59,7 @@ static inline void RLMVerifyInWriteTransaction(__unsafe_unretained RLMObjectBase
     // first verify is attached
     RLMVerifyAttached(obj);
 
-    if (!obj->_realm->_inWriteTransaction) {
+    if (!obj->_realm.inWriteTransaction) {
         @throw RLMException(@"Attempting to modify object outside of a write transaction - call beginWriteTransaction on an RLMRealm instance first.");
     }
 }
