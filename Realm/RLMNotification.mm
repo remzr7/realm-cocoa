@@ -354,9 +354,6 @@ class TransactLogHandler {
 
         template<typename Func>
         void forEach(Func&& f) const {
-            if (row == realm::npos) {
-                return;
-            }
             for (size_t i = 0; i < changes.size(); ++i) {
                 auto const& change = changes[i];
                 if (change.changed) {
@@ -367,11 +364,15 @@ class TransactLogHandler {
     };
 
     size_t currentTable = 0;
+    std::vector<ObserverState> observers;
+    std::vector<RLMObservationInfo *> invalidated;
+
     size_t currentCol = 0;
     ObserverState *activeObserver = nullptr;
     ObserverState::change *activeLinkList = nullptr;
-    std::vector<ObserverState> observers;
 
+    // Find all observed objects in the given object schema and build up the
+    // array of observers to notify from them
     void findObservers(NSArray *schema) {
         for (RLMObjectSchema *objectSchema in schema) {
             for (auto info : objectSchema->_observedObjects) {
@@ -387,6 +388,7 @@ class TransactLogHandler {
         }
     }
 
+    // Send didChange notifications to all observers marked as needing them
     void notifyObservers() {
         for (auto const& o : observers) {
             o.forEach([&](size_t i, auto const& change) {
@@ -395,13 +397,12 @@ class TransactLogHandler {
                                   change.linkviewChangeIndexes);
             });
         }
-        for (auto const& o : observers) {
-            if (o.row == realm::not_found) {
-                o.info->didChange(@"invalidated");
-            }
+        for (auto const& info : invalidated) {
+            info->didChange(@"invalidated");
         }
     }
 
+    // Mark the given row/col as needing notifications sent
     bool markDirty(size_t row_ndx, size_t col_ndx) {
         for (auto& o : observers) {
             if (o.table == currentTable && o.row == row_ndx) {
@@ -410,6 +411,16 @@ class TransactLogHandler {
             }
         }
         return true;
+    }
+
+    // Remove the given observer from the list of observed objects and add it
+    // to the listed of invalidated objects
+    void invalidate(ObserverState *o) {
+        invalidated.push_back(o->info);
+        if (observers.size() > 1) {
+            observers[o - &observers[0]] = std::move(observers.back());
+        }
+        observers.pop_back();
     }
 
 public:
@@ -427,17 +438,16 @@ public:
 
     void parse_complete() {
         for (auto const& o : observers) {
-            if (o.row == realm::not_found) {
-                o.info->willChange(@"invalidated");
-                o.info->setReturnNil(true);
-                continue;
-            }
-
             o.forEach([&](size_t i, auto const& change) {
                 o.info->willChange([o.info->getObjectSchema().properties[i] name],
                                    change.linkviewChangeKind,
                                    change.linkviewChangeIndexes);
             });
+        }
+
+        for (auto info : invalidated) {
+            info->willChange(@"invalidated");
+            info->setReturnNil(true);
         }
     }
 
@@ -468,15 +478,17 @@ public:
     }
 
     bool erase_rows(size_t row_ndx, size_t, size_t last_row_ndx, bool unordered) noexcept {
-        for (auto& o : observers) {
+        for (size_t i = 0; i < observers.size(); ++i) {
+            auto& o = observers[i];
             if (o.table == currentTable) {
                 if (o.row == row_ndx) {
-                    o.row = realm::npos;
+                    invalidate(&o);
+                    --i;
                 }
                 else if (unordered && o.row == last_row_ndx) {
                     o.row = row_ndx;
                 }
-                else if (!unordered && o.row > row_ndx && o.row != realm::npos) {
+                else if (!unordered && o.row > row_ndx) {
                     o.row -= 1;
                 }
             }
@@ -485,10 +497,13 @@ public:
     }
 
     bool clear_table() noexcept {
-        for (auto& o : observers) {
+        for (size_t i = 0; i < observers.size(); ) {
+            auto& o = observers[i];
             if (o.table == currentTable) {
-                o.row = realm::npos;
-                o.changes.clear();
+                invalidate(&o);
+            }
+            else {
+                ++i;
             }
         }
         return true;
@@ -508,33 +523,34 @@ public:
     }
 
     void append_link_list_change(NSKeyValueChange kind, NSUInteger index) {
-        if (ObserverState::change *o = activeLinkList) {
-            if (o->multipleLinkviewChanges)
-                return;
-            if (!o->linkviewChangeIndexes) {
-                o->linkviewChangeIndexes = [NSMutableIndexSet indexSetWithIndex:index];
-                o->linkviewChangeKind = kind;
-                o->changed = true;
-            }
-            else if (o->linkviewChangeKind == kind) {
-                if (kind == NSKeyValueChangeRemoval) {
-                    NSUInteger i = [o->linkviewChangeIndexes firstIndex];
-                    while (i <= index) {
-                        ++index;
-                        i = [o->linkviewChangeIndexes indexGreaterThanIndex:i];
-                    }
-                }
-                else if (kind == NSKeyValueChangeInsertion) {
-                    [o->linkviewChangeIndexes shiftIndexesStartingAtIndex:index by:1];
-                }
-                [o->linkviewChangeIndexes addIndex:index];
-            }
-            else {
-                o->multipleLinkviewChanges = false;
-                o->linkviewChangeIndexes = nil;
-            }
+        ObserverState::change *o = activeLinkList;
+        if (!o || o->multipleLinkviewChanges) {
+            return;
         }
 
+        if (!o->linkviewChangeIndexes) {
+            o->linkviewChangeIndexes = [NSMutableIndexSet indexSetWithIndex:index];
+            o->linkviewChangeKind = kind;
+            o->changed = true;
+        }
+        else if (o->linkviewChangeKind == kind) {
+            if (kind == NSKeyValueChangeRemoval) {
+                // Shift the index to compensate for already-removed indices
+                NSUInteger i = [o->linkviewChangeIndexes firstIndex];
+                while (i <= index) {
+                    ++index;
+                    i = [o->linkviewChangeIndexes indexGreaterThanIndex:i];
+                }
+            }
+            else if (kind == NSKeyValueChangeInsertion) {
+                [o->linkviewChangeIndexes shiftIndexesStartingAtIndex:index by:1];
+            }
+            [o->linkviewChangeIndexes addIndex:index];
+        }
+        else {
+            o->multipleLinkviewChanges = false;
+            o->linkviewChangeIndexes = nil;
+        }
     }
 
     bool link_list_set(size_t index, size_t) {
@@ -558,30 +574,31 @@ public:
     }
 
     bool link_list_clear() {
-        if (ObserverState::change *o = activeLinkList) {
-            if (o->multipleLinkviewChanges)
-                return true;
-
-            auto range = NSMakeRange(0, activeObserver->info->getRow().get_linklist(currentCol)->size());
-            if (!o->linkviewChangeIndexes) {
-                o->linkviewChangeIndexes = [NSMutableIndexSet indexSetWithIndexesInRange:range];
-                o->linkviewChangeKind = NSKeyValueChangeRemoval;
-            }
-            else if (o->linkviewChangeKind == NSKeyValueChangeRemoval) {
-                // FIXME: not tested
-                range.length += [o->linkviewChangeIndexes count];
-                [o->linkviewChangeIndexes addIndexesInRange:range];
-            }
-            // FIXME: clear after insert doesn't need to set multiple
-            else {
-                o->multipleLinkviewChanges = false;
-                o->linkviewChangeIndexes = nil;
-            }
-            o->changed = true;
+        ObserverState::change *o = activeLinkList;
+        if (!o || o->multipleLinkviewChanges) {
+            return true;
         }
+
+        NSRange range{0, activeObserver->info->getRow().get_linklist(currentCol)->size()};
+        if (!o->linkviewChangeIndexes) {
+            o->linkviewChangeIndexes = [NSMutableIndexSet indexSetWithIndexesInRange:range];
+            o->linkviewChangeKind = NSKeyValueChangeRemoval;
+        }
+        else if (o->linkviewChangeKind == NSKeyValueChangeRemoval) {
+            // FIXME: not tested
+            range.length += [o->linkviewChangeIndexes count];
+            [o->linkviewChangeIndexes addIndexesInRange:range];
+        }
+        // FIXME: clear after insert doesn't need to set multiple
+        else {
+            o->multipleLinkviewChanges = false;
+            o->linkviewChangeIndexes = nil;
+        }
+        o->changed = true;
         return true;
     }
 
+    // Will need to handle this once it's exposed in RLMArray
     bool link_list_move(size_t, size_t) { return true; }
 
     // Things that just mark the field as modified
