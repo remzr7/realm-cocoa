@@ -276,6 +276,7 @@
         p.object_type = prop.objectClassName ? prop.objectClassName.UTF8String : "";
         p.is_indexed = prop.indexed;
         p.is_primary = (prop == _primaryKeyProperty);
+        p.table_column = prop.column;
         objectSchema.properties.push_back(std::move(p));
     }
     return objectSchema;
@@ -292,6 +293,7 @@
                                                              type:(RLMPropertyType)prop.type
                                                   objectClassName:prop.object_type.length() ? @(prop.object_type.c_str()) : nil
                                                           indexed:prop.is_indexed];
+        property.column = prop.table_column;
         property.isPrimary = (prop.name == objectSchema.primary_key);
         [propArray addObject:property];
     }
