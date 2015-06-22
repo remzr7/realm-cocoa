@@ -137,7 +137,7 @@ void RLMObservationInfo::removeObserver() {
 
 id RLMObservationInfo::valueForKey(NSString *key, id (^getValue)()) {
     if (invalidated) {
-        if ([key isEqualToString:@"invalidated"]) {
+        if ([key isEqualToString:RLMInvalidatedKey]) {
             return @YES;
         }
         return cachedObjects[key];
@@ -277,7 +277,7 @@ void RLMTrackDeletions(__unsafe_unretained RLMRealm *const realm, dispatch_block
             change.info->willChange(change.property, NSKeyValueChangeRemoval, change.indexes);
         }
         for (auto info : invalidated) {
-            info->willChange(@"invalidated");
+            info->willChange(RLMInvalidatedKey);
             info->prepareForInvalidation();
         }
     });
@@ -288,7 +288,7 @@ void RLMTrackDeletions(__unsafe_unretained RLMRealm *const realm, dispatch_block
         change.info->didChange(change.property, NSKeyValueChangeRemoval, change.indexes);
     }
     for (auto info : invalidated) {
-        info->didChange(@"invalidated");
+        info->didChange(RLMInvalidatedKey);
     }
 
     realm.group->set_cascade_notification_handler(nullptr);
@@ -361,7 +361,7 @@ class TransactLogHandler {
             });
         }
         for (auto const& info : invalidated) {
-            info->didChange(@"invalidated");
+            info->didChange(RLMInvalidatedKey);
         }
     }
 
@@ -409,7 +409,7 @@ public:
         }
 
         for (auto info : invalidated) {
-            info->willChange(@"invalidated");
+            info->willChange(RLMInvalidatedKey);
             info->prepareForInvalidation();
         }
     }
