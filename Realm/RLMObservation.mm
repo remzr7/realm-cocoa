@@ -576,7 +576,6 @@ public:
             o->linkviewChangeKind = NSKeyValueChangeRemoval;
         }
         else if (o->linkviewChangeKind == NSKeyValueChangeRemoval) {
-            // FIXME: not tested
             range.length += [o->linkviewChangeIndexes count];
             [o->linkviewChangeIndexes addIndexesInRange:range];
         }
